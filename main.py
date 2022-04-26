@@ -3,6 +3,8 @@ from tkinter.ttk import *
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 from tkinter.scrolledtext import ScrolledText
 import tkinter.font as tkfont
+import idlelib.colorizer as ic
+import idlelib.percolator as ip
 from os.path import basename
 import subprocess
 
@@ -149,7 +151,16 @@ class IDE(Tk) :
         font = tkfont.Font(font=self.editor['font'])
         tab_size = font.measure(" " * 4)
         self.editor.config(tabs=tab_size)
-        
+
+        cdg = ic.ColorDelegator()
+        cdg.tagdefs['COMMENT'] = {'foreground' : '#FF0000', 'background' : '#FFFFFF'}
+        cdg.tagdefs['KEYWORD'] = {'foreground' : '#007F00', 'background' : '#FFFFFF'}
+        cdg.tagdefs['BUILTIN'] = {'foreground' : '#7F7F00', 'background' : '#FFFFFF'}
+        cdg.tagdefs['STRING']  = {'foreground' : '#7F3F00', 'background' : '#FFFFFF'}
+        cdg.tagdefs['DEFINITION'] = {'foreground' : '#007F7F', 'background' : '#FFFFFF'}
+
+        ip.Percolator(self.editor).insertfilter(cdg)
+
         self.editor.grid(column=0, row=0, padx=5, pady=5, sticky='nsew') # nsew fill=tk.BOTH
         self.editor.focus()
 
