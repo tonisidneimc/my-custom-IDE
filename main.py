@@ -17,6 +17,8 @@ class IDE(Tk) :
     def __init__(self) :
         super().__init__()
 
+        self.geometry('1200x700')
+
         self.columnconfigure(0, weight=1)
         self.rowconfigure([0, 1, 2], weight=1)
 
@@ -97,11 +99,21 @@ class IDE(Tk) :
         filename = self.get_filename(name)
         self.title(f'{filename} - My Custom IDE')
 
+    def show_click_menu(self, key_event=None) :
+
+        if str(key_event.widget._name) != 'editor' :
+            return
+        try:
+            self.edit_menu.tk_popup(key_event.x_root, key_event.y_root)
+        finally:
+            self.edit_menu.grab_release()
+
     def bind_shortcuts(self) :
 
         _macOS = (platform == 'darwin')
 
         _Meta = 'Command' if _macOS else 'Control'
+        _right_click = 'Button-2' if _macOS else 'Button-3'
 
         self.bind(f'<{_Meta}-n>', self.new_file)
         self.bind(f'<{_Meta}-o>', self.open_file)
@@ -109,6 +121,8 @@ class IDE(Tk) :
         self.bind(f'<{_Meta}-S>', self.save_as)
         self.bind(f'<{_Meta}-b>', self.run)
         self.bind(f'<{_Meta}-q>', self.close)
+
+        self.bind(f'<{_right_click}>', self.show_click_menu)
 
     def change_word(self, event=None) :
 
@@ -123,7 +137,7 @@ class IDE(Tk) :
 
     def run(self, event=None) :
         
-        if self.file_path == "":
+        if not self.file_path:
             save_prompt = Toplevel()
             text = Label(save_prompt, text='Please save your code')
             text.grid()
@@ -151,11 +165,11 @@ class IDE(Tk) :
         menu_bar = Menu(self, fg='#c9bebb', bg='#2e2724')
 
         file_menu = Menu(menu_bar, tearoff=0)
-        edit_menu = Menu(menu_bar, tearoff=0)
+        self.edit_menu = Menu(menu_bar, tearoff=0)
         run_menu  = Menu(menu_bar, tearoff=0)
 
         menu_bar.add_cascade(label='File', menu=file_menu)
-        menu_bar.add_cascade(label='Edit', menu=edit_menu)
+        menu_bar.add_cascade(label='Edit', menu=self.edit_menu)
         menu_bar.add_cascade(label='Run', menu=run_menu)
 
         file_menu.add_command(label='New', accelerator=f'{_Meta}+N', command=self.new_file)
@@ -165,15 +179,15 @@ class IDE(Tk) :
         file_menu.add_separator()
         file_menu.add_command(label='Exit', accelerator=f'{_Meta}+Q', command=self.close)
         
-        edit_menu.add_command(label='Cut', accelerator=f'{_Meta}+X', command=self.cut_text)
-        edit_menu.add_command(label='Copy', accelerator=f'{_Meta}+C', command=self.copy_text)
-        edit_menu.add_command(label='Paste', accelerator=f'{_Meta}+V', command=self.paste_text)
+        self.edit_menu.add_command(label='Cut', accelerator=f'{_Meta}+X', command=self.cut_text)
+        self.edit_menu.add_command(label='Copy', accelerator=f'{_Meta}+C', command=self.copy_text)
+        self.edit_menu.add_command(label='Paste', accelerator=f'{_Meta}+V', command=self.paste_text)
 
         run_menu.add_command(label='Run', accelerator=f'{_Meta}+B', command=self.run)
 
         self.config(menu=menu_bar)
 
-        self.editor = ScrolledText(self, font=('Menlo-Regular 12'), wrap=None)
+        self.editor = ScrolledText(self, name='editor', font=('Menlo-Regular 12'), wrap=None)
 
         font = tkfont.Font(font=self.editor['font'])
         tab_size = font.measure(" " * 4)
@@ -191,11 +205,10 @@ class IDE(Tk) :
         self.editor.grid(column=0, row=0, padx=5, pady=5, sticky='nsew') # nsew fill=tk.BOTH
         self.editor.focus()
 
-        self.code_output = ScrolledText(self, font=('Menlo-Regular 12'), height=10)
+        self.code_output = ScrolledText(self, name='output', font=('Menlo-Regular 12'), height=10)
         self.code_output.configure(state='disabled')
         self.code_output.grid(row=1, column=0, padx=5, pady=5, sticky='nsew')
 
-        curr_filename = self.get_filename(self.file_path)
         self.status_bar = Label(self, text=f'\t\t\t\t\t\t\t\t characters: 0 words: 0', anchor='sw')
         self.status_bar.grid(column=0, row=2, padx=5, pady=2, stick='nsew')
 
