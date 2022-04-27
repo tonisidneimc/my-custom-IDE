@@ -3,29 +3,28 @@ from tkinter.ttk import *
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 from tkinter.scrolledtext import ScrolledText
 import tkinter.font as tkfont
+
 import idlelib.colorizer as ic
 import idlelib.percolator as ip
+
 from os.path import basename
+from sys import platform
+
 import subprocess
 
 class IDE(Tk) :
 
     def __init__(self) :
         super().__init__()
-        self.title('My Custom IDE')
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure([0, 1, 2], weight=1)
 
-        self.file_path = ''
+        self.file_path = None
+        self.title('Untitled - My Custom IDE')
 
         self.create_widgets()
-
-        self.bind('<Control-o>', self.open_file)
-        self.bind('<Control-s>', self.save_file)
-        self.bind('<Control-S>', self.save_as)
-        self.bind('<F5>', self.run)
-        self.bind('<Control-q>', self.close)
+        self.bind_shortcuts()
 
         self.text_change = False
         self.editor.bind("<<Modified>>", self.change_word)
@@ -33,47 +32,56 @@ class IDE(Tk) :
     def set_file_path(self, path) :
         self.file_path = path
 
-    def get_filename(self) -> str:
-        return basename(self.file_path) if self.file_path else 'unsaved'
+    def get_filename(self, file_path) -> str:
+        return basename(file_path) if file_path else 'Untitled'
+
+    def new_file(self, event=None) :
+        self.editor.delete(1.0, END)
+        self.file_path = None
+        self.set_window_title()
 
     def open_file(self, event=None) :
         path = askopenfilename(filetypes=[('Python Files', '*.py')])
             
         with open(path, 'r') as file :
             code = file.read()
-            self.editor.delete('1.0', END)
-            self.editor.insert('1.0', code)
+            self.editor.delete(1.0, END)
+            self.editor.insert(1.0, code)
             self.set_file_path(path)
-            
+        
+        self.set_window_title(path)
         self.editor.event_generate(("<<Modified>>"))
 
     def save_file(self, event=None) :
         
-        if self.file_path == "":
-            path = asksaveasfilename(defaultextension='.py', filetypes=[('Python Files', '*.py')])
+        if not self.file_path :
+            path = asksaveasfilename(defaultextension='.py', 
+                                    filetypes=[('Python Files', '*.py')])
         else:
             path = self.file_path
 
-        if path == "": return
+        if not path : return
 
         with open(path, 'w') as file :
-            code = self.editor.get('1.0', END)
+            code = self.editor.get(1.0, END)
             file.write(code)
             self.set_file_path(path)
 
+        self.set_window_title(path)
         self.editor.event_generate(("<<Modified>>"))
 
     def save_as(self, event=None) :
             
-        path = asksaveasfilename(defaultextension='.py', filetypes=[('Python Files', '*.py')])
-
-        if path == "": return
+        path = asksaveasfilename(defaultextension='.py', 
+                                filetypes=[('Python Files', '*.py')])
+        if not path: return
 
         with open(path, 'w') as file :
-            code = self.editor.get('1.0', END)
+            code = self.editor.get(1.0, END)
             file.write(code)
             self.set_file_path(path)
 
+        self.set_window_title(path)
         self.editor.event_generate(("<<Modified>>"))
 
     def cut_text(self, event=None) :
@@ -85,6 +93,23 @@ class IDE(Tk) :
     def paste_text(self, event=None) :
         self.editor.event_generate(("<<Paste>>"))
 
+    def set_window_title(self, name=None) :
+        filename = self.get_filename(name)
+        self.title(f'{filename} - My Custom IDE')
+
+    def bind_shortcuts(self) :
+
+        _macOS = (platform == 'darwin')
+
+        _Meta = 'Command' if _macOS else 'Control'
+
+        self.bind(f'<{_Meta}-n>', self.new_file)
+        self.bind(f'<{_Meta}-o>', self.open_file)
+        self.bind(f'<{_Meta}-s>', self.save_file)
+        self.bind(f'<{_Meta}-S>', self.save_as)
+        self.bind(f'<{_Meta}-b>', self.run)
+        self.bind(f'<{_Meta}-q>', self.close)
+
     def change_word(self, event=None) :
 
         if self.editor.edit_modified() :
@@ -92,9 +117,7 @@ class IDE(Tk) :
             word_count = len(self.editor.get(1.0, 'end-1c').split())
             char_count = len(self.editor.get(1.0, 'end-1c').replace(" ", ""))
 
-            filename = self.get_filename()
-
-            self.status_bars.config(text=f'{filename} \t\t\t\t\t\t characters: {char_count} words: {word_count}')
+            self.status_bar.config(text=f'\t\t\t\t\t\t\t\tcharacters: {char_count} words: {word_count}')
 
         self.editor.edit_modified(False)
 
@@ -112,9 +135,9 @@ class IDE(Tk) :
         output, error = process.communicate()
         
         self.code_output.configure(state='normal')
-        self.code_output.delete('1.0', END)
-        self.code_output.insert('1.0', error)
-        self.code_output.insert('1.0', output)
+        self.code_output.delete(1.0, END)
+        self.code_output.insert(1.0, error)
+        self.code_output.insert(1.0, output)
         self.code_output.configure(state='disabled')
 
     def close(self, event=None) :
@@ -122,7 +145,10 @@ class IDE(Tk) :
 
     def create_widgets(self) :
 
-        menu_bar = Menu(self)
+        _macOS = (platform == 'darwin')
+        _Meta = 'Command' if _macOS else 'Control'
+
+        menu_bar = Menu(self, fg='#c9bebb', bg='#2e2724')
 
         file_menu = Menu(menu_bar, tearoff=0)
         edit_menu = Menu(menu_bar, tearoff=0)
@@ -132,17 +158,18 @@ class IDE(Tk) :
         menu_bar.add_cascade(label='Edit', menu=edit_menu)
         menu_bar.add_cascade(label='Run', menu=run_menu)
 
-        file_menu.add_command(label='Open', accelerator='Ctrl+O', command=self.open_file)
-        file_menu.add_command(label='Save', accelerator='Ctrl+S', command=self.save_file)
-        file_menu.add_command(label='Save as...', accelerator='Ctrl+Shift+S', command=self.save_as)
+        file_menu.add_command(label='New', accelerator=f'{_Meta}+N', command=self.new_file)
+        file_menu.add_command(label='Open', accelerator=f'{_Meta}+O', command=self.open_file)
+        file_menu.add_command(label='Save', accelerator=f'{_Meta}+S', command=self.save_file)
+        file_menu.add_command(label='Save as...', accelerator=f'{_Meta}+Shift+S', command=self.save_as)
         file_menu.add_separator()
-        file_menu.add_command(label='Exit', accelerator='Ctrl+Q', command=self.close)
+        file_menu.add_command(label='Exit', accelerator=f'{_Meta}+Q', command=self.close)
         
-        edit_menu.add_command(label='Cut', accelerator='Ctrl+X', command=self.cut_text)
-        edit_menu.add_command(label='Copy', accelerator='Ctrl+C', command=self.copy_text)
-        edit_menu.add_command(label='Paste', accelerator='Ctrl+V', command=self.paste_text)
+        edit_menu.add_command(label='Cut', accelerator=f'{_Meta}+X', command=self.cut_text)
+        edit_menu.add_command(label='Copy', accelerator=f'{_Meta}+C', command=self.copy_text)
+        edit_menu.add_command(label='Paste', accelerator=f'{_Meta}+V', command=self.paste_text)
 
-        run_menu.add_command(label='Run', accelerator='F5', command=self.run)
+        run_menu.add_command(label='Run', accelerator=f'{_Meta}+B', command=self.run)
 
         self.config(menu=menu_bar)
 
@@ -168,9 +195,9 @@ class IDE(Tk) :
         self.code_output.configure(state='disabled')
         self.code_output.grid(row=1, column=0, padx=5, pady=5, sticky='nsew')
 
-        curr_filename = self.get_filename()
-        self.status_bars = Label(self, text=f'{curr_filename} \t\t\t\t\t\t characters: 0 words: 0')
-        self.status_bars.grid(column=0, row=2, padx=5, pady=2, stick='nsew')
+        curr_filename = self.get_filename(self.file_path)
+        self.status_bar = Label(self, text=f'\t\t\t\t\t\t\t\t characters: 0 words: 0', anchor='sw')
+        self.status_bar.grid(column=0, row=2, padx=5, pady=2, stick='nsew')
 
 
 if __name__ == "__main__" :
