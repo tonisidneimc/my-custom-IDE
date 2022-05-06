@@ -1,5 +1,5 @@
 from tkinter import *
-from tkinter.ttk import *
+import tkinter.ttk as ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 from tkinter.scrolledtext import ScrolledText
 import tkinter.font as tkfont
@@ -12,7 +12,7 @@ from sys import platform
 
 import subprocess
 
-class Editor(ScrolledText) :
+class Editor(Text) :
     def __init__(self, *args, **kargs) :
         super().__init__(*args, **kargs)
 
@@ -82,8 +82,8 @@ class StatusBar(Frame) :
         self.alert = StringVar()
         self.counter  = StringVar()
 
-        self.lbl_status = Label(self, textvariable=self.alert, style='window.TLabel', anchor='w').pack(side=LEFT)
-        self.lbl_counter  = Label(self, textvariable=self.counter, style='window.TLabel', anchor='e').pack(side=RIGHT)
+        self.lbl_status   = Label(self, textvariable=self.alert, anchor='w').pack(side=LEFT)
+        self.lbl_counter  = Label(self, textvariable=self.counter, anchor='e').pack(side=RIGHT)
         self.update_counter()
 
     def update_status(self, stt=None) :
@@ -99,6 +99,59 @@ class StatusBar(Frame) :
         self.counter.set(info)
         self.update_status(None)
 
+from functools import partial
+from time import time
+
+class AutoScrollbar(Scrollbar):
+    """A subclass of `tkinter.Scrollbar` that automatically hides and shows itself as needed. If you need to
+    find out if an instance of this class is currently visible, check it's :py:attr:`visible` attribute.
+    """
+    def __init__(self, master, **kwargs):
+
+        super().__init__(master, **kwargs)
+        self.geometry_manager_add = lambda: None # replaced by grid(), pack() or place()
+        self.geometry_manager_forget = lambda: None
+        self.visible : bool = False # needed because super().winfo_ismapped() doesn't work as expected... 
+        self._delayTime = time()
+
+    def set(self, lo, hi):
+        if self._delay(): # do these checks only after a threshold time limit to prevent runaway oscilations in scrollbar visibility.
+            if float(lo) <= 0.0 and float(hi) >= 1.0:
+                if self.visible:  # avoid calling the geometry manager too often
+                    self.geometry_manager_forget()
+                    self.visible = False
+            else:
+                if not self.visible: # avoid calling the geometry manager too often
+                    self.geometry_manager_add()
+                    self.visible = True
+        super().set(lo, hi)
+        
+    def _delay(self) -> bool:
+        """This method prevents locking up due to bouncing between showing and hiding the scroll
+        bars.  It should be called as part of the conditional to change the state of the scroll bars.
+        It works by introducing a one second delay between state changes giving the user time to drag
+        by the 'purgatory' in-between state, and at least preventing runaway oscilations from 
+        locking up the GUI""" 
+        now = time()
+        if now - self._delayTime > 1.0:
+            self._delayTime = now
+            return True
+        else:
+            return False
+
+    def grid(self, **kwargs):
+        self.geometry_manager_add = partial(super().grid, **kwargs)
+        self.geometry_manager_forget = super().grid_forget
+
+    def pack(self, **kwargs):
+        self.geometry_manager_add = partial(super().pack, **kwargs)
+        self.geometry_manager_forget = super().pack_forget
+
+    def place(self, **kwargs):
+        self.geometry_manager_add = partial(super().place, **kwargs)
+        self.geometry_manager_forget = super().place_forget
+  
+
 class IDE(Tk) :
 
     def __init__(self) :
@@ -107,9 +160,8 @@ class IDE(Tk) :
         self.geometry('1200x700')
         self.minsize(650, 550)
 
-        style = Style(self)
+        style = ttk.Style(self)
         style.theme_use('classic')
-        style.configure('window.TLabel', background='#E2E2E2')
 
         self.tk_setPalette(background='#E2E2E2')
 
@@ -283,8 +335,19 @@ class IDE(Tk) :
         file_menu.add_separator()
         file_menu.add_command(label='Exit', accelerator=f'{_Meta}+Q', command=self.close)
         
-        self.editor = Editor(self, name='editor', font=font, wrap='word', relief=GROOVE)
-        self.editor.grid(column=0, row=0, padx=10, pady=5, sticky='nsew') # nsew fill=tk.BOTH
+        text_container = Frame(self, bd=2, relief=SUNKEN)
+        self.editor = Editor(text_container, name='editor', font=font, wrap='none', borderwidth=0)
+        textVsb = AutoScrollbar(text_container, troughcolor='blue', orient='vertical', command=self.editor.yview)
+        textHsb = AutoScrollbar(text_container, orient='horizontal', command=self.editor.xview)
+        self.editor.configure(yscrollcommand=textVsb.set, xscrollcommand=textHsb.set)
+        self.editor.grid(row=0, column=0, sticky='nsew')
+        textVsb.grid(row=0, column=1, sticky='ns')
+        textHsb.grid(row=1, column=0, sticky='ew')
+
+        text_container.grid_rowconfigure(0, weight=1)
+        text_container.grid_columnconfigure(0, weight=1)
+
+        text_container.grid(column=0, row=0, padx=10, pady=5, sticky='nsew') # nsew fill=tk.BOTH
         self.editor.focus()
 
         self.edit_menu.add_command(label='Cut', accelerator=f'{_Meta}+X', command=self.editor.cut_text)
@@ -295,10 +358,10 @@ class IDE(Tk) :
 
         self.config(menu=menu_bar)
 
-        self.code_output = Output(self, name='output', font=font, height=10, cursor='arrow')
+        self.code_output = Output(self, bd=2, bg='#E2E2E2', name='output', font=font, height=10, cursor='arrow')
         self.code_output.grid(row=1, column=0, padx=10, pady=2, sticky='nsew')
 
-        self.status_bar = StatusBar(self, style='window.TLabel')
+        self.status_bar = StatusBar(self)
         self.status_bar.grid(column=0, row=2, padx=25, pady=3, stick='we')
 
 if __name__ == "__main__" :
