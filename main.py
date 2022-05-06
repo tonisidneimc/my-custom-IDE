@@ -12,24 +12,121 @@ from sys import platform
 
 import subprocess
 
+class Editor(ScrolledText) :
+    def __init__(self, *args, **kargs) :
+        super().__init__(*args, **kargs)
+
+        self.configure(bg='white', fg='black')
+
+        font = kargs['font']
+        self.measure_tab(font)
+
+        self.setup_syntax_highlight()
+
+        self.text_change = True
+
+    def measure_tab(self, font) :
+
+        tab_size = tkfont.Font(font=font).measure(' ' * 4)
+        self.config(tabs=tab_size)
+
+    def setup_syntax_highlight(self) :
+
+        cdg = ic.ColorDelegator()
+
+        cdg.tagdefs['COMMENT']    = {'foreground' : '#FF0000', 'background' : '#FFFFFF'}
+        cdg.tagdefs['KEYWORD']    = {'foreground' : '#007F00', 'background' : '#FFFFFF'}
+        cdg.tagdefs['BUILTIN']    = {'foreground' : '#7F7F00', 'background' : '#FFFFFF'}
+        cdg.tagdefs['STRING']     = {'foreground' : '#7F3F00', 'background' : '#FFFFFF'}
+        cdg.tagdefs['DEFINITION'] = {'foreground' : '#007F7F', 'background' : '#FFFFFF'}
+
+        ip.Percolator(self).insertfilter(cdg)
+
+    def cut_text(self, event=None) :
+        self.event_generate(("<<Cut>>"))
+        self.text_change = True
+
+    def copy_text(self, event=None) :
+        self.event_generate(("<<Copy>>"))
+
+    def paste_text(self, event=None) :
+        self.event_generate(("<<Paste>>"))
+        self.text_change = True
+
+class Output(ScrolledText) :
+    def __init__(self, *args, **kargs) :
+        super().__init__(*args, **kargs)
+
+        self.configure(bg='white', fg='black', relief=GROOVE)
+        self.configure(state='disabled')
+
+    def show(self, error, output) :
+        self.configure(state='normal')
+        self.delete(1.0, END)
+        self.insert(1.0, error)
+        self.insert(1.0, output)
+        self.configure(state='disabled')
+
+class Status :
+    SAVED, NO_FILE = range(1, 3)
+
+class StatusBar(Frame) :
+
+    status = {
+        Status.SAVED   : 'Your changes have been saved.',
+        Status.NO_FILE : 'Cannot run! You must save your file before running it.',
+    }
+
+    def __init__(self, *args, **kargs) :
+        super().__init__(*args, **kargs)
+        self.alert = StringVar()
+        self.counter  = StringVar()
+
+        self.lbl_status = Label(self, textvariable=self.alert, style='window.TLabel', anchor='w').pack(side=LEFT)
+        self.lbl_counter  = Label(self, textvariable=self.counter, style='window.TLabel', anchor='e').pack(side=RIGHT)
+        self.update_counter()
+
+    def update_status(self, stt=None) :
+
+        info = self.status[stt] if stt else ''
+
+        self.alert.set(info)
+
+    def update_counter(self, char_count:int=0, word_count:int=0) :
+
+        info = f'characters: {char_count}, words: {word_count}'
+
+        self.counter.set(info)
+        self.update_status(None)
+
 class IDE(Tk) :
 
     def __init__(self) :
         super().__init__()
 
         self.geometry('1200x700')
+        self.minsize(650, 550)
+
+        style = Style(self)
+        style.theme_use('classic')
+        style.configure('window.TLabel', background='#E2E2E2')
+
+        self.tk_setPalette(background='#E2E2E2')
 
         self.columnconfigure(0, weight=1)
-        self.rowconfigure([0, 1, 2], weight=1)
+        self.rowconfigure(0, weight=20)
+        self.rowconfigure(1, weight=10)
+        self.rowconfigure(2, weight=1)
 
         self.file_path = None
-        self.title('Untitled - My Custom IDE')
 
         self.create_widgets()
         self.bind_shortcuts()
 
-        self.text_change = False
+        self.set_window_title() # Untitled
+        
         self.editor.bind("<<Modified>>", self.change_word)
+        self.editor.bind("<<Paste>>", self.change_word)
 
     def set_file_path(self, path) :
         self.file_path = path
@@ -40,19 +137,21 @@ class IDE(Tk) :
     def new_file(self, event=None) :
         self.editor.delete(1.0, END)
         self.file_path = None
-        self.set_window_title()
+        self.editor.text_change = True
+        self.set_window_title() # Untitled
 
     def open_file(self, event=None) :
         path = askopenfilename(filetypes=[('Python Files', '*.py')])
             
-        with open(path, 'r') as file :
+        with open(path, 'r', encoding="utf-8") as file :
             code = file.read()
             self.editor.delete(1.0, END)
             self.editor.insert(1.0, code)
             self.set_file_path(path)
         
-        self.set_window_title(path)
         self.editor.event_generate(("<<Modified>>"))
+        self.editor.text_change = False
+        self.set_window_title(path)
 
     def save_file(self, event=None) :
         
@@ -64,13 +163,19 @@ class IDE(Tk) :
 
         if not path : return
 
-        with open(path, 'w') as file :
-            code = self.editor.get(1.0, END)
-            file.write(code)
-            self.set_file_path(path)
+        try:
+            with open(path, 'w', encoding="utf-8") as file :
+                code = self.editor.get(1.0, END)
+                file.write(code)
+                self.set_file_path(path)
+                self.status_bar.update_status(Status.SAVED)
 
-        self.set_window_title(path)
-        self.editor.event_generate(("<<Modified>>"))
+        except Exception as err:
+            print(err)
+        else:
+            self.editor.text_change = False
+            self.editor.event_generate(("<<Modified>>"))
+            self.set_window_title(path)
 
     def save_as(self, event=None) :
             
@@ -78,30 +183,28 @@ class IDE(Tk) :
                                 filetypes=[('Python Files', '*.py')])
         if not path: return
 
-        with open(path, 'w') as file :
-            code = self.editor.get(1.0, END)
-            file.write(code)
-            self.set_file_path(path)
+        try:
+            with open(path, 'w', encoding="utf-8") as file :
+                code = self.editor.get(1.0, END)
+                file.write(code)
+                self.set_file_path(path)
+                self.status_bar.update_status(Status.SAVED)
 
-        self.set_window_title(path)
-        self.editor.event_generate(("<<Modified>>"))
-
-    def cut_text(self, event=None) :
-        self.editor.event_generate(("<<Cut>>"))
-
-    def copy_text(self, event=None) :
-        self.editor.event_generate(("<<Copy>>"))
-
-    def paste_text(self, event=None) :
-        self.editor.event_generate(("<<Paste>>"))
+        except Exception as err:
+            print(err)
+        else:
+            self.editor.text_change = False
+            self.editor.event_generate(("<<Modified>>"))
+            self.set_window_title(path)
 
     def set_window_title(self, name=None) :
         filename = self.get_filename(name)
-        self.title(f'{filename} - My Custom IDE')
+        modified = '*' if self.editor.text_change else ''
+        self.title(f'{modified}{filename} - My Custom IDE')
 
     def show_click_menu(self, key_event=None) :
 
-        if str(key_event.widget._name) != 'editor' :
+        if str(key_event.widget._name) != 'editor': # if not focusing on editor
             return
         try:
             self.edit_menu.tk_popup(key_event.x_root, key_event.y_root)
@@ -127,32 +230,31 @@ class IDE(Tk) :
     def change_word(self, event=None) :
 
         if self.editor.edit_modified() :
-            self.text_change = True
+            self.editor.text_change = True
+            self.set_window_title(self.file_path)
             word_count = len(self.editor.get(1.0, 'end-1c').split())
             char_count = len(self.editor.get(1.0, 'end-1c').replace(" ", ""))
 
-            self.status_bar.config(text=f'\t\t\t\t\t\t\t\tcharacters: {char_count} words: {word_count}')
+            self.status_bar.update_counter(char_count, word_count)
 
         self.editor.edit_modified(False)
 
     def run(self, event=None) :
-        
+
         if not self.file_path:
-            save_prompt = Toplevel()
-            text = Label(save_prompt, text='Please save your code')
-            text.grid()
+            self.status_bar.update_status(Status.NO_FILE)
             return
+
+        if self.editor.text_change :
+            self.save_file()
+            self.status_bar.update_status(Status.SAVED)
 
         command = f'python3 {self.file_path}'
             
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         output, error = process.communicate()
         
-        self.code_output.configure(state='normal')
-        self.code_output.delete(1.0, END)
-        self.code_output.insert(1.0, error)
-        self.code_output.insert(1.0, output)
-        self.code_output.configure(state='disabled')
+        self.code_output.show(error, output)
 
     def close(self, event=None) :
         self.destroy()
@@ -162,7 +264,9 @@ class IDE(Tk) :
         _macOS = (platform == 'darwin')
         _Meta = 'Command' if _macOS else 'Control'
 
-        menu_bar = Menu(self, fg='#c9bebb', bg='#2e2724')
+        font = ('Menlo-Regular', 12, 'bold')
+
+        menu_bar = Menu(self)
 
         file_menu = Menu(menu_bar, tearoff=0)
         self.edit_menu = Menu(menu_bar, tearoff=0)
@@ -179,39 +283,23 @@ class IDE(Tk) :
         file_menu.add_separator()
         file_menu.add_command(label='Exit', accelerator=f'{_Meta}+Q', command=self.close)
         
-        self.edit_menu.add_command(label='Cut', accelerator=f'{_Meta}+X', command=self.cut_text)
-        self.edit_menu.add_command(label='Copy', accelerator=f'{_Meta}+C', command=self.copy_text)
-        self.edit_menu.add_command(label='Paste', accelerator=f'{_Meta}+V', command=self.paste_text)
+        self.editor = Editor(self, name='editor', font=font, wrap='word', relief=GROOVE)
+        self.editor.grid(column=0, row=0, padx=10, pady=5, sticky='nsew') # nsew fill=tk.BOTH
+        self.editor.focus()
+
+        self.edit_menu.add_command(label='Cut', accelerator=f'{_Meta}+X', command=self.editor.cut_text)
+        self.edit_menu.add_command(label='Copy', accelerator=f'{_Meta}+C', command=self.editor.copy_text)
+        self.edit_menu.add_command(label='Paste', accelerator=f'{_Meta}+V', command=self.editor.paste_text)
 
         run_menu.add_command(label='Run', accelerator=f'{_Meta}+B', command=self.run)
 
         self.config(menu=menu_bar)
 
-        self.editor = ScrolledText(self, name='editor', font=('Menlo-Regular 12'), wrap=None)
+        self.code_output = Output(self, name='output', font=font, height=10, cursor='arrow')
+        self.code_output.grid(row=1, column=0, padx=10, pady=2, sticky='nsew')
 
-        font = tkfont.Font(font=self.editor['font'])
-        tab_size = font.measure(" " * 4)
-        self.editor.config(tabs=tab_size)
-
-        cdg = ic.ColorDelegator()
-        cdg.tagdefs['COMMENT'] = {'foreground' : '#FF0000', 'background' : '#FFFFFF'}
-        cdg.tagdefs['KEYWORD'] = {'foreground' : '#007F00', 'background' : '#FFFFFF'}
-        cdg.tagdefs['BUILTIN'] = {'foreground' : '#7F7F00', 'background' : '#FFFFFF'}
-        cdg.tagdefs['STRING']  = {'foreground' : '#7F3F00', 'background' : '#FFFFFF'}
-        cdg.tagdefs['DEFINITION'] = {'foreground' : '#007F7F', 'background' : '#FFFFFF'}
-
-        ip.Percolator(self.editor).insertfilter(cdg)
-
-        self.editor.grid(column=0, row=0, padx=5, pady=5, sticky='nsew') # nsew fill=tk.BOTH
-        self.editor.focus()
-
-        self.code_output = ScrolledText(self, name='output', font=('Menlo-Regular 12'), height=10)
-        self.code_output.configure(state='disabled')
-        self.code_output.grid(row=1, column=0, padx=5, pady=5, sticky='nsew')
-
-        self.status_bar = Label(self, text=f'\t\t\t\t\t\t\t\t characters: 0 words: 0', anchor='sw')
-        self.status_bar.grid(column=0, row=2, padx=5, pady=2, stick='nsew')
-
+        self.status_bar = StatusBar(self, style='window.TLabel')
+        self.status_bar.grid(column=0, row=2, padx=25, pady=3, stick='we')
 
 if __name__ == "__main__" :
 
