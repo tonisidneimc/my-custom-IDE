@@ -1,2 +1,4 @@
-# my-custom-IDE
-build an Integrated Development Environment from scratch
+# My-Custom-IDE
+A simple Integrated Development Environment for the Python language
+
+![screen](./img/screen.png)
