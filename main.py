@@ -3,11 +3,12 @@ import tkinter.ttk as ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 from tkinter.scrolledtext import ScrolledText
 import tkinter.font as tkfont
+import tkinter.messagebox as messagebox
 
 import idlelib.colorizer as ic
 import idlelib.percolator as ip
 
-from os.path import basename
+import os.path as os_path
 from sys import platform
 
 import subprocess
@@ -41,6 +42,12 @@ class Editor(Text) :
         cdg.tagdefs['DEFINITION'] = {'foreground' : '#007F7F', 'background' : '#FFFFFF'}
 
         ip.Percolator(self).insertfilter(cdg)
+
+    def select_all_text(self, event=None) :
+        self.tag_add(SEL, '1.0', END)
+        self.mark_set(INSERT, '1.0')
+        self.see(INSERT)
+        return 'break'
 
     def cut_text(self, event=None) :
         self.event_generate(("<<Cut>>"))
@@ -184,7 +191,7 @@ class IDE(Tk) :
         self.file_path = path
 
     def get_filename(self, file_path) -> str:
-        return basename(file_path) if file_path else 'Untitled'
+        return os_path.basename(file_path) if file_path else 'Untitled'
 
     def new_file(self, event=None) :
         self.editor.delete(1.0, END)
@@ -336,7 +343,8 @@ class IDE(Tk) :
         file_menu.add_command(label='Exit', accelerator=f'{_Meta}+Q', command=self.close)
         
         text_container = Frame(self, bd=2, relief=SUNKEN)
-        self.editor = Editor(text_container, name='editor', font=font, wrap='none', borderwidth=0)
+        self.editor = Editor(text_container, name='editor', font=font, wrap='none', borderwidth=0, 
+                                                            undo=True, maxundo=-1, autoseparators=True)
         textVsb = AutoScrollbar(text_container, troughcolor='blue', orient='vertical', command=self.editor.yview)
         textHsb = AutoScrollbar(text_container, orient='horizontal', command=self.editor.xview)
         self.editor.configure(yscrollcommand=textVsb.set, xscrollcommand=textHsb.set)
@@ -350,9 +358,14 @@ class IDE(Tk) :
         text_container.grid(column=0, row=0, padx=10, pady=5, sticky='nsew') # nsew fill=tk.BOTH
         self.editor.focus()
 
+        self.edit_menu.add_command(label='Select All', accelerator=f'{_Meta}+A', command=self.editor.select_all_text)
+        self.edit_menu.add_separator()
         self.edit_menu.add_command(label='Cut', accelerator=f'{_Meta}+X', command=self.editor.cut_text)
         self.edit_menu.add_command(label='Copy', accelerator=f'{_Meta}+C', command=self.editor.copy_text)
         self.edit_menu.add_command(label='Paste', accelerator=f'{_Meta}+V', command=self.editor.paste_text)
+        self.edit_menu.add_separator()
+        self.edit_menu.add_command(label='Undo', accelerator=f'{_Meta}+Z', command=self.editor.edit_undo)
+        self.edit_menu.add_command(label='Redo', accelerator=f'{_Meta}+Y', command=self.editor.edit_redo)
 
         run_menu.add_command(label='Run', accelerator=f'{_Meta}+B', command=self.run)
 
